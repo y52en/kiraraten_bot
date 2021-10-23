@@ -21,6 +21,7 @@ lazy_static = "1.4"
 futures = "0.3"
 kuon = {version = "0.0.26",path="kuon_nouse_openssl"}
 rustc-serialize = "0.3.24"
+chrono = "0.4.19"
 
 
 [profile.release]

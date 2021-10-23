@@ -1,24 +1,28 @@
-mod module;
 mod document;
+mod module;
 mod tweet;
 
+use chrono::prelude::Local;
 use rustc_serialize::json;
 // use std::collections::HashMap;
 
-
 use regex::Regex;
 
-static debug_URL:&str = "http://www.kiraraten.jp/goods_list.html";
-static URL:&str = "http://127.0.0.1:5500/";
+static URL: &str = "http://www.kiraraten.jp/goods_list.html";
+// static URL: &str = "http://127.0.0.1:5500/";
 
-static savepath:&str = "./test.json";
-static error_log:&str = "./error.txt";
+static HOMEPATH: &str = "/home/pi/kiraraten_bot/";
+// static HOMEPATH: &str = "./";
 
-static debug:bool = false;
+static _savepath: &str = "list.json";
+static error_log: &str = "error.txt";
+
+// static debug: bool = false;
+static debug: bool = true;
 
 #[tokio::main]
 async fn main() {
-    println!("{}",URL);
+    println!("{}", URL);
     let a = module::http_get(URL).await.unwrap();
     let dom = document::parse_html(a);
 
@@ -34,7 +38,18 @@ async fn main() {
 
     // let goods_num = str_as_num(goods_num);
 
-    let savedata = module::readfile(savepath).unwrap();
+    let savepath = format!("{}{}",HOMEPATH ,_savepath);
+
+    let end = ||{
+        let enc = json::encode(&goods_stock).unwrap();
+        module::writefile(&savepath, enc).unwrap();
+    };
+
+    let savedata = module::readfile(&savepath).unwrap();
+    if savedata == String::new() {
+        end();
+        return
+    }
     let mut dec: Vec<String> = json::decode(&savedata).unwrap();
 
     if dec.len() == 0 {
@@ -43,51 +58,55 @@ async fn main() {
 
     if goods_stock.len() != dec.len() {
         let err = "length error";
-        module::writefile(error_log, err).unwrap();
+        module::writefile(format!("{}{}",HOMEPATH , error_log), err).unwrap();
         panic!(err);
     }
 
-    let comp = [goods_stock.clone(),dec];
+    let comp = rotate_vec(vec![goods_stock.clone(), dec]);
 
     let mut diff = 0;
-    for x in comp.iter() {
+    for (i,x) in comp.iter().enumerate() {
         if x[0] != x[1] {
             diff += 1;
+            println!("{} {} i:{}",x[0] , x[1],i)
         }
     }
     if diff > 0 {
-        let tweet_str = format!("グッズ情報が更新されています\n更新グッズ数:{}",diff);
-        p(&tweet_str);
-        if !debug{
+        let now = Local::now().format("%m/%d %H:%M");
+        let tweet_str = format!("グッズ情報が更新されています\n更新グッズ数:{}\nデータ取得日時:{}", diff,now);
+        println!("{}", &tweet_str);
+        if !debug {
             tweet::tweet(&tweet_str).await;
         }
     }
-    let enc = json::encode(&goods_stock).unwrap();
-    module::writefile(savepath, enc).unwrap();
+    
+    end();
 }
 
 
-fn p<S:std::fmt::Debug>(s:S){
-    println!("{:#?}",s);
+
+fn p<S: std::fmt::Debug>(s: S) {
+    println!("{:#?}", s);
 }
 
-fn del_space_and_tag(v:Vec<String>) -> Vec<String> {
+fn del_space_and_tag(v: Vec<String>) -> Vec<String> {
     let re = Regex::new(r"\n|\t|</?strong>").unwrap();
-    v.iter().map(|string|{
-         re.replace_all(string, "").to_string()
-    }).collect::<Vec<String>>()
+    v.iter()
+        .map(|string| re.replace_all(string, "").to_string())
+        .collect::<Vec<String>>()
 }
 
 #[allow(dead_code)]
-fn str_as_num(v:Vec<String>)-> Vec<i32> {
+fn str_as_num(v: Vec<String>) -> Vec<i32> {
     let re = Regex::new(r"--").unwrap();
-    let v = v.iter().map(|string|{
-         re.replace_all(string, "-1").to_string()
-    }).collect::<Vec<String>>();
+    let v = v
+        .iter()
+        .map(|string| re.replace_all(string, "-1").to_string())
+        .collect::<Vec<String>>();
 
-    v.iter().map(|string|{
-         string.parse().unwrap()
-    }).collect::<Vec<i32>>()
+    v.iter()
+        .map(|string| string.parse().unwrap())
+        .collect::<Vec<i32>>()
 }
 
 // [
@@ -100,16 +119,16 @@ fn str_as_num(v:Vec<String>)-> Vec<i32> {
 //     [0,4],
 //     [0,5]
 // ]
-// 
-// 
+//
+//
 
-fn rotate_vec<S:Clone>(v:Vec<Vec<S>>) -> Vec<Vec<S>> {
+fn rotate_vec<S: Clone>(v: Vec<Vec<S>>) -> Vec<Vec<S>> {
     let mut output = Vec::new();
     for x in 0..v.get(0).unwrap().len() {
         output.push(Vec::new());
         for y in 0..v.len() {
             output[x].push(v[y][x].clone());
-        };
-    };
+        }
+    }
     output
 }
